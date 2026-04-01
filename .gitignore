@@ -1,0 +1,4 @@
+/test
+/package/docs/*.ttf
+/package/examples/*.ttf
+/wasm-plugin/target
