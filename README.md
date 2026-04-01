@@ -2,6 +2,8 @@
 
 **typarium** is a Typst package for building expressive font specimen cards from system fonts, local font files, and mixed metadata dictionaries.
 
+For the full guide and API reference, see [documentation.pdf](package/docs/documentation.pdf).
+
 ## Usage
 
 ### Basic Local Font Specimen
