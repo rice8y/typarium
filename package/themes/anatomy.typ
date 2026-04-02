@@ -1,4 +1,3 @@
-// Supporting parts for visualizing font metrics.
 #let opt(it, key, default) = {
   let overrides = it.at("item-overrides", default: (:))
   if type(overrides) == dictionary and key in overrides {

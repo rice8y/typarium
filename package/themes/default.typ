@@ -1,4 +1,3 @@
-// Presentation helpers for the default theme.
 #let opt(it, key, default) = {
   let overrides = it.at("item-overrides", default: (:))
   if type(overrides) == dictionary and key in overrides {
