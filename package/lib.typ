@@ -5,6 +5,10 @@
 
 #let font-plugin = plugin("font_parser.wasm")
 
+#let _v15-or-later() = {
+  sys.version >= version(0, 15, 0)
+}
+
 #let _normalize-meta-key(key) = {
   let normalized = key.replace("_", "-")
   if normalized == "type" { "font-type" } else { normalized }
@@ -24,16 +28,32 @@
   }
 }
 
-#let _is-font-path(value) = type(value) == str and value.match(regex("(?i)\.(ttf|otf|ttc|otc)$")) != none
+#let _is-path-type(value) = _v15-or-later() and type(value) == path
+
+#let _is-font-path(value) = _is-path-type(value) or (
+  type(value) == str and value.match(regex("(?i)\.(ttf|otf|ttc|otc)$")) != none
+)
+
+#let _is-font-source(value) = type(value) == bytes or _is-font-path(value)
 
 #let _extract-font-source(item) = {
-  if type(item) == str and _is-font-path(item) {
+  if _is-font-path(item) {
     item
   } else if type(item) == bytes {
     item
   } else if type(item) == dictionary {
     let source = item.at("path", default: none)
-    if type(source) in (str, bytes) { source } else { none }
+    if _is-font-source(source) { source } else { none }
+  } else {
+    none
+  }
+}
+
+#let _source-cache-key(source) = {
+  if type(source) == str {
+    source
+  } else if _is-path-type(source) {
+    repr(source)
   } else {
     none
   }
@@ -75,7 +95,7 @@
     } else {
       (name: target, variation-values: normalized)
     }
-  } else if type(target) == bytes {
+  } else if type(target) == bytes or _is-path-type(target) {
     (path: target, variation-values: normalized)
   } else {
     (variation-values: normalized)
@@ -143,13 +163,14 @@
   let is-dict = type(item) == dictionary
   let source = _extract-font-source(item)
   let has-font-source = source != none
-  let path = if type(source) == str { source } else { none }
+  let path = if type(source) == str or _is-path-type(source) { source } else { none }
   let item-overrides = (:)
 
   let fallback-name = if type(context-font) == array { context-font.first() } else { context-font }
-  let meta-from-wasm = if type(source) == str and source in parsed-cache {
-    parsed-cache.at(source)
-  } else if type(source) == bytes {
+  let cache-key = _source-cache-key(source)
+  let meta-from-wasm = if cache-key != none and cache-key in parsed-cache {
+    parsed-cache.at(cache-key)
+  } else if source != none {
     _parse-font-file(source)
   } else {
     (:)
@@ -205,14 +226,15 @@
   let normalized-theme = if type(theme) == dictionary { _normalize-meta-value(theme) } else { (:) }
   let base-theme = if type(render) == function { normalized-theme } else { default-theme + normalized-theme }
   let target-fonts = if fonts == auto { current-font } else { fonts }
-  if type(target-fonts) in (str, bytes, dictionary) { target-fonts = (target-fonts,) }
+  if type(target-fonts) in (str, bytes, dictionary) or _is-path-type(target-fonts) { target-fonts = (target-fonts,) }
   let default-props = (column-count: columns)
 
   let parsed-cache = (:)
   for item in target-fonts {
     let source = _extract-font-source(item)
-    if type(source) == str and not (source in parsed-cache) {
-      parsed-cache.insert(source, _parse-font-file(source))
+    let cache-key = _source-cache-key(source)
+    if cache-key != none and not (cache-key in parsed-cache) {
+      parsed-cache.insert(cache-key, _parse-font-file(source))
     }
   }
 

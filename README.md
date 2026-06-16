@@ -2,7 +2,7 @@
 
 **typarium** is a Typst package for rendering font specimen cards for system fonts and local fonts.
 
-Fonts specified only by family name are renderable through Typst, but file-level metadata is only available when you provide a local font as raw bytes or supply metadata manually.
+Fonts specified only by family name are renderable through Typst, but file-level metadata is only available when you provide a local font as raw bytes, pass a Typst 0.15.0+ `path(...)`, or supply metadata manually.
 
 For the full guide and API reference, see [documentation.pdf](package/docs/documentation.pdf).
 
@@ -10,10 +10,10 @@ For the full guide and API reference, see [documentation.pdf](package/docs/docum
 
 ### Basic Local Font Specimen
 
-To render a local font file with the default renderer, place the font next to your document and pass it as raw bytes:
+To render a local font file with the default renderer, place the font next to your document and pass it as raw bytes. On Typst 0.15.0 or later, you can pass a resolved `path(...)` value instead and let typarium read it inside the package.
 
 ```typst
-#import "@local/typarium:0.1.0": font-showcase
+#import "@preview/typarium:0.1.1": font-showcase
 
 #font-showcase(
   theme: (
@@ -25,6 +25,14 @@ To render a local font file with the default renderer, place the font next to yo
 )
 ```
 
+Typst 0.15.0+ path-based equivalent:
+
+```typst
+#font-showcase(
+  fonts: ((path: path("Jaldi-Regular.ttf")),),
+)
+```
+
 ![Basic local specimen](package/images/sample01.png)
 
 ### Anatomy Renderer
@@ -32,7 +40,7 @@ To render a local font file with the default renderer, place the font next to yo
 To inspect metrics and technical metadata with the bundled anatomy renderer:
 
 ```typst
-#import "@local/typarium:0.1.0": font-showcase, anatomy-theme, anatomy-render
+#import "@preview/typarium:0.1.1": font-showcase, anatomy-theme, anatomy-render
 
 #font-showcase(
   fonts: (
@@ -56,7 +64,7 @@ To inspect metrics and technical metadata with the bundled anatomy renderer:
 To inspect parsed glyph metrics, codepoint samples, and table diagnostics with the bundled inspector renderer:
 
 ```typst
-#import "@local/typarium:0.1.0": font-showcase, inspector-theme, inspector-render
+#import "@preview/typarium:0.1.1": font-showcase, inspector-theme, inspector-render
 
 #font-showcase(
   theme: inspector-theme,
@@ -74,7 +82,7 @@ See also [variation-request.typ](package/examples/variation-request.typ) for a s
 The recommended pattern is `item -> theme -> metadata -> fallback`.
 
 ```typst
-#import "@local/typarium:0.1.0": font-showcase
+#import "@preview/typarium:0.1.1": font-showcase
 
 #let poster-theme = (
   color-bg: rgb("0f1720"),
@@ -138,7 +146,7 @@ Per-font dictionaries can still override any renderer-facing keys, including `sa
 You can combine system fonts, local files, and manual dictionaries in one call:
 
 ```typst
-#import "@local/typarium:0.1.0": font-showcase
+#import "@preview/typarium:0.1.1": font-showcase
 
 #font-showcase(
   columns: 2,
@@ -160,7 +168,7 @@ You can combine system fonts, local files, and manual dictionaries in one call:
 To restyle all cards in one showcase:
 
 ```typst
-#import "@local/typarium:0.1.0": font-showcase, default-theme
+#import "@preview/typarium:0.1.1": font-showcase, default-theme
 
 #font-showcase(
   theme: default-theme + (
@@ -180,7 +188,7 @@ To restyle all cards in one showcase:
 To restyle only one card inside a multi-font showcase:
 
 ```typst
-#import "@local/typarium:0.1.0": font-showcase, anatomy-theme, anatomy-render
+#import "@preview/typarium:0.1.1": font-showcase, anatomy-theme, anatomy-render
 
 #font-showcase(
   theme: anatomy-theme + (
@@ -216,7 +224,7 @@ Renders one or more font specimen cards.
 
 **Key Parameters:**
 
-- `fonts` (`auto | str | bytes | dictionary | array`): Font sources to render. Use raw bytes for user-local font files.
+- `fonts` (`auto | str | bytes | path | dictionary | array`): Font sources to render. Use raw bytes for Typst 0.14.x compatibility, or `path(...)` on Typst 0.15.0+ for user-local font files.
 - `theme` (`dictionary`): Showcase-level renderer configuration and design-token payload passed into the active renderer layer.
 - `render` (`function | auto`): Custom card renderer. If `auto`, uses `default-render`.
 - `columns` (`int`): Number of cards per grid row.
@@ -231,7 +239,7 @@ Normalizes a variable-axis request onto a font item or theme dictionary.
 ```
 
 - If `target` is a font-item dictionary, the helper returns that dictionary with `variation-values` inserted.
-- If `target` is a font-name string, it returns a dictionary using `name:`. If `target` is raw bytes, it returns a dictionary using `path:`.
+- If `target` is a font-name string, it returns a dictionary using `name:`. If `target` is raw bytes or a Typst 0.15.0+ path value, it returns a dictionary using `path:`.
 - `font-showcase` converts `variation-values` into `variation-request`, which renderers can inspect today even though Typst 0.14.x does not yet apply variable axes in shaping.
 - The warning about variable fonts comes from Typst itself, not from typarium. Installing a static instance of the same family can remove the warning, but it does not enable true variable-axis shaping in Typst.
 
@@ -254,19 +262,20 @@ Bundled renderer functions you can pass to `render`.
 
 ## Input Shapes
 
-`fonts` supports four common forms:
+`fonts` supports five common forms:
 
 - `auto`: uses the current Typst font context.
 - `"Libertinus Serif"`: renders a system font by family name.
 - `read("Jaldi-Regular.ttf", encoding: none)`: parses and renders raw font bytes directly.
-- `(path: read("Jaldi-Regular.ttf", encoding: none), name: "Custom Label")`: parses a file and applies explicit overrides.
+- `path("Jaldi-Regular.ttf")` on Typst 0.15.0+: resolves a project-local font at the call site and lets typarium parse it.
+- `(path: read("Jaldi-Regular.ttf", encoding: none), name: "Custom Label")` or `(path: path("Jaldi-Regular.ttf"), name: "Custom Label")`: parses a file and applies explicit overrides.
 
 ## Under the Hood
 
 The processing workflow is:
 
 1. `font-showcase` normalizes the input shape and resolves the showcase-level theme.
-2. Raw font bytes are passed to `font_parser.wasm`.
+2. Raw font bytes, including bytes read internally from Typst 0.15.0+ path sources, are passed to `font_parser.wasm`.
 3. The Rust parser extracts names, permissions, collection summaries, metrics, variation axes, table diagnostics, codepoint samples, glyph-name indices, and per-glyph metric/image records.
 4. Metadata keys are normalized into Typst-friendly hyphenated names.
 5. A prepared `font-text` helper is created from the resolved font family and shaping options.
@@ -288,7 +297,7 @@ In practice, if you are designing your own renderer, `theme` and per-font dictio
 
 ### Local Font Files
 
-Installed Typst packages cannot directly read arbitrary files from the user project through package-relative paths, so local fonts should normally be passed as raw bytes via `read("FontFile.ttf", encoding: none)` into the `path` field.
+For Typst 0.14.x compatibility, pass local fonts as raw bytes via `read("FontFile.ttf", encoding: none)` into the `path` field. On Typst 0.15.0 or later, pass `path("FontFile.ttf")` directly or through the dictionary `path` field; callers do not need to wrap that path value in `read(...)`. Plain string file paths still resolve from the package context, so project-local fonts should use either `read(...)` or `path(...)`.
 
 ### Family-Name Fonts
 
