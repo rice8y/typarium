@@ -1,4 +1,4 @@
-#import "@local/typarium:0.1.0": font-showcase, set-variations, default-theme, default-render, terminal-theme, terminal-render, anatomy-theme, anatomy-render, inspector-theme, inspector-render
+#import "@local/typarium:0.1.1": font-showcase, set-variations, default-theme, default-render, terminal-theme, terminal-render, anatomy-theme, anatomy-render, inspector-theme, inspector-render
 
 #set page(
   paper: "a4",
@@ -37,9 +37,9 @@
   #v(2.5em)
   #text(size: 11pt, fill: luma(55))[A Typst package for expressive font specimen cards with custom themes and custom renderers.] \
   #v(0.22em)
-  #text(size: 10.5pt, style: "italic", fill: luma(75))[System fonts, raw local font bytes, metadata dictionaries, and fully custom rendering workflows.] \
+  #text(size: 10.5pt, style: "italic", fill: luma(75))[System fonts, raw local font bytes, Typst 0.15+ paths, metadata dictionaries, and fully custom rendering workflows.] \
   #v(0.5em)
-  #text(size: 10.5pt, weight: "semibold")[Version 0.1.0]
+  #text(size: 10.5pt, weight: "semibold")[Version 0.1.1]
 ]
 
 #v(1cm)
@@ -53,7 +53,7 @@
 
 = Package Surface
 
-The typarium package centers on a single high-level function, `#font-showcase(...)`, defined in `lib.typ`. It turns one or more font descriptions into specimen cards, can auto-extract metadata from raw font bytes through `font_parser.wasm`, and can be restyled either by overriding a theme dictionary or by replacing the renderer entirely.
+The typarium package centers on a single high-level function, `#font-showcase(...)`, defined in `lib.typ`. It turns one or more font descriptions into specimen cards, can auto-extract metadata from raw font bytes or Typst 0.15+ path values through `font_parser.wasm`, and can be restyled either by overriding a theme dictionary or by replacing the renderer entirely.
 
 == Public Symbols
 
@@ -80,13 +80,21 @@ The underscore-prefixed helpers are documented here for completeness, but they s
 
 == Minimal Import Patterns
 
-For the default experience, pass the user-local font as raw bytes from the calling document:
+For the default experience, pass the user-local font as raw bytes from the calling document. On Typst 0.15.0 or later, you can pass a resolved `path(...)` value instead and let typarium read it inside the package.
 
 ```typst
-#import "@preview/typarium:0.1.0": font-showcase
+#import "@preview/typarium:0.1.1": font-showcase
 
 #font-showcase(
   fonts: ((path: read("Jaldi-Regular.ttf", encoding: none)),)
+)
+```
+
+Typst 0.15.0+ path-based equivalent:
+
+```typst
+#font-showcase(
+  fonts: ((path: path("Jaldi-Regular.ttf")),)
 )
 ```
 
@@ -103,7 +111,7 @@ Visual result:
 For alternate bundled themes:
 
 ```typst
-#import "@preview/typarium:0.1.0": font-showcase, terminal-theme, terminal-render
+#import "@preview/typarium:0.1.1": font-showcase, terminal-theme, terminal-render
 
 #font-showcase(
   fonts: ((path: read("Jaldi-Regular.ttf", encoding: none)),),
@@ -133,7 +141,7 @@ The exact signature in `lib.typ` is:
 ) = context { ... }
 ```
 
-`font-showcase` is intentionally primitive. Its job is to normalize font inputs, parse raw font bytes through the WASM plugin, prepare a `font-text` helper, merge showcase-level and per-font `theme` overrides, and hand the resolved payload to a renderer.
+`font-showcase` is intentionally primitive. Its job is to normalize font inputs, parse font bytes from raw bytes or Typst 0.15+ path sources through the WASM plugin, prepare a `font-text` helper, merge showcase-level and per-font `theme` overrides, and hand the resolved payload to a renderer.
 
 The bundled `default`, `terminal`, `anatomy`, and `inspector` renderers are sample implementations built on top of this host API. Renderer-facing specimen keys such as `sample-text`, `waterfall`, or `show-details` are therefore carried through `theme` or per-font dictionaries rather than through separate top-level function parameters.
 
@@ -141,12 +149,13 @@ The bundled `default`, `terminal`, `anatomy`, and `inspector` renderers are samp
 
 == Choose an Input Shape
 
-You can call `font-showcase` in four common ways:
+You can call `font-showcase` in five common ways:
 
 - Omit `fonts` entirely and let the function use the current Typst text font.
 - Pass a string such as `"Helvetica"` to target a system-installed font.
-- Pass raw bytes from `read("FontFile.ttf", encoding: none)` either directly in `fonts` or through a font dictionary `path` field. This is the normal way to parse user-local font files from an installed package.
-- Pass a dictionary or an array of dictionaries to attach labels, overrides, metadata, or layout settings per font item. For actual font-file parsing, prefer raw bytes over strings.
+- Pass raw bytes from `read("FontFile.ttf", encoding: none)` either directly in `fonts` or through a font dictionary `path` field. This is the compatibility path for Typst 0.14.x.
+- On Typst 0.15.0 or later, pass `path("FontFile.ttf")` either directly in `fonts` or through a font dictionary `path` field. The path is resolved at the call site, then read by typarium inside the package.
+- Pass a dictionary or an array of dictionaries to attach labels, overrides, metadata, or layout settings per font item. For actual font-file parsing, prefer raw bytes or Typst 0.15+ path values over package-relative string paths.
 
 == Decide Where Metadata Should Come From
 
@@ -154,7 +163,7 @@ The library merges information from four places:
 
 1. Built-in internal defaults required for payload stability.
 2. Top-level `theme`.
-3. Metadata extracted by `font_parser.wasm` when raw font bytes are present.
+3. Metadata extracted by `font_parser.wasm` when raw font bytes or a Typst 0.15+ path source are present.
 4. Explicit per-font dictionary overrides inside `fonts`.
 
 Later stages override earlier ones, with one exception: the library performs special handling for `name` and `render-name`, documented in Section 4.
@@ -168,24 +177,26 @@ Later stages override earlier ones, with one exception: the library performs spe
 
 == Compile-Time Requirements
 
-When a font item provides raw bytes, `font-showcase` does all of the following:
+When a font item provides raw bytes or a Typst 0.15+ path source, `font-showcase` does all of the following:
 
 - accepts raw bytes passed through `path: read("FontFile.ttf", encoding: none)`;
+- accepts Typst 0.15+ path values passed through `path: path("FontFile.ttf")` or directly as `fonts: path("FontFile.ttf")`;
+- reads path sources as raw bytes inside the package;
 - sends the bytes into `font_parser.wasm` using `plugin("font_parser.wasm")`;
 - parses the returned JSON into a Typst dictionary.
 
-Typst does not let installed packages read arbitrary project files through package-relative string paths. In practice, user-local fonts should therefore be passed as bytes from the calling document.
+Typst does not let installed packages read arbitrary project files through package-relative string paths. For Typst 0.14.x compatibility, pass user-local fonts as bytes from the calling document. On Typst 0.15.0 or later, pass a `path(...)` value; callers do not need to wrap that path value in `read(...)`.
 
 == Inspection Limits for `name`-Based Fonts
 
 This distinction is crucial: typarium has two very different operating modes.
 
 1. `name` / family-string mode
-2. raw-bytes mode via `read("FontFile.ttf", encoding: none)`
+2. parsed-file mode via `read("FontFile.ttf", encoding: none)` bytes or Typst 0.15+ `path("FontFile.ttf")`
 
 In `name` mode, Typst only gives the package a renderable family descriptor for the `text` function. That is enough to typeset specimen text, but it does not reveal which concrete font file Typst selected, where that file lives, or what its binary tables contain. As a result, typarium cannot run `font_parser.wasm` on that font and cannot recover file-level metadata from the family name alone.
 
-In raw-bytes mode, the calling document explicitly supplies the font binary. That gives typarium something concrete to parse, so the package can extract the full WASM metadata surface and forward it into bundled or custom renderers.
+In parsed-file mode, the calling document explicitly supplies the font binary or a resolved path value. That gives typarium something concrete to parse, so the package can extract the full WASM metadata surface and forward it into bundled or custom renderers.
 
 Practical consequences of `name` / family-string mode:
 
@@ -194,7 +205,7 @@ Practical consequences of `name` / family-string mode:
 - Typst itself still performs its usual family matching and fallback behavior;
 - but parsed metadata is unavailable because no font bytes were provided.
 
-When no raw bytes are available, you should assume all WASM-derived data is absent unless you add it manually. This includes, but is not limited to:
+When neither raw bytes nor a Typst 0.15+ path source are available, you should assume all WASM-derived data is absent unless you add it manually. This includes, but is not limited to:
 
 - `glyphs`
 - `glyph-details`
@@ -212,16 +223,16 @@ This means bundled renderer behavior changes depending on input shape:
 
 - `default-render` can still show title, specimen, paragraph text, and any manual metadata you provide;
 - `show-glyphs: true` only renders a glyph section when `glyphs` actually exists;
-- detail-oriented renderers such as `anatomy` and `inspector` become much more informative when raw bytes are supplied;
+- detail-oriented renderers such as `anatomy` and `inspector` become much more informative when raw bytes or a Typst 0.15+ path source are supplied;
 - a custom renderer should always tolerate missing parsed metadata.
 
 Recommended interpretation:
 
 - use `name:` or a plain family string when you only need rendering;
-- use raw bytes when you need inspection, glyph analysis, technical metadata, or reproducible parser output;
+- use raw bytes or Typst 0.15+ path values when you need inspection, glyph analysis, technical metadata, or reproducible parser output;
 - if you intentionally stay in `name` mode, provide any important metadata manually through the per-font dictionary.
 
-This is not a limitation of typarium alone. It follows from Typst's current package and path model together with the fact that the `text` function accepts family descriptors for shaping, not an inspectable font-file handle.
+This is not a limitation of typarium alone. It follows from Typst's package and font model together with the fact that the `text` function accepts family descriptors for shaping, not an inspectable font-file handle.
 
 = `font-showcase` Parameter Reference
 
@@ -229,7 +240,7 @@ This is not a limitation of typarium alone. It follows from Typst's current pack
 
 #spec-table(
   [*Name*], [*Type*], [*Default*], [*Behavior*],
-  [`fonts`], [`auto | str | bytes | dictionary | array`], [`auto`], [Controls which fonts become specimen cards. `auto` uses the current `text.font` context. A single string, bytes value, or dictionary is automatically wrapped into a one-item array. Raw bytes are the recommended way to pass user-local fonts into an installed package.],
+  [`fonts`], [`auto | str | bytes | path | dictionary | array`], [`auto`], [Controls which fonts become specimen cards. `auto` uses the current `text.font` context. A single string, bytes value, Typst 0.15+ path value, or dictionary is automatically wrapped into a one-item array. Use raw bytes for Typst 0.14.x compatibility, or `path(...)` on Typst 0.15.0+ for user-local fonts.],
   [`theme`], [`dictionary`], [`(:)`], [Showcase-level renderer configuration and design-token payload forwarded into the active renderer layer. When `render` is omitted, it is merged into `default-theme`; when `render` is custom, it is passed through and then combined with per-font `theme` overrides.],
   [`render`], [`auto | function`], [`auto`], [If this is a function, it is called once for every resolved font item. Otherwise the package uses `default-render`.],
   [`columns`], [`int`], [`1`], [Forwarded to Typst `grid(columns: ...)` as `(1fr,) * columns`. The package does not validate the number, so use a positive integer.],
@@ -248,7 +259,7 @@ This is not a limitation of typarium alone. It follows from Typst's current pack
   [`align`], [`alignment`], [`left`], [Alignment used by bundled specimen blocks. Typical values are `left`, `center`, and `right`.],
   [`sample-fallback`], [`bool`], [`true`], [Passed into the prepared `font-text` function as Typst `fallback`. Set this to `false` when you want missing glyphs to remain missing instead of falling back to another font.],
   [`waterfall`], [`array`], [`()`], [A sequence of sizes such as `(1.2em, 1.8em, 2.4em)`. When non-empty, the default renderer draws one sample row per size and ignores `sample-size` for the main specimen block.],
-  [`show-glyphs`], [`bool`], [`false`], [Enables the glyph section in the default renderer when metadata contains `glyphs`. Family-name inputs alone do not produce `glyphs`; for that, you need raw font bytes or manual metadata.],
+  [`show-glyphs`], [`bool`], [`false`], [Enables the glyph section in the default renderer when metadata contains `glyphs`. Family-name inputs alone do not produce `glyphs`; for that, you need raw font bytes, a Typst 0.15+ path source, or manual metadata.],
   [`leading`], [`length`], [`0.8em`], [Controls line spacing for the main specimen block, waterfall rows, and glyph section. Reduce this when narrow cards cause wrapped specimen lines to feel too loose.],
   [`show-details`], [`bool | dictionary`], [`false`], [When enabled, the default renderer adds a metadata detail section and bundled alternate renderers honor the related visibility flags. A dictionary can override individual detail rows such as `author`, `manufacturer`, `license`, `font-type`, `weight`, `width`, `styles-count`, `number-of-glyphs`, `postscript-name`, `version`, `copyright`, and `license-url`.],
   [`title-overflow`], [`auto | "inline" | "stack"`], [`auto`], [Controls how the default renderer handles long titles. `auto` measures the title block and badge block, then stacks metadata only when the inline header would overflow in narrow multi-column cards.],
@@ -367,7 +378,7 @@ Visual result:
 
 == Raw Font Bytes
 
-A bytes value from `read("FontFile.ttf", encoding: none)` is the normal way to parse a user-local font file from an installed package.
+A bytes value from `read("FontFile.ttf", encoding: none)` is the compatibility-safe way to parse a user-local font file from an installed package, including on Typst 0.14.x.
 
 ```typst
 #font-showcase(
@@ -390,6 +401,34 @@ Visual result:
   theme: (
     sample-fallback: false,
     sample-text: "Raw bytes input triggers WASM metadata extraction.",
+  ),
+)
+
+== Typst 0.15+ Path Value
+
+A `path("FontFile.ttf")` value is resolved relative to the file where it is constructed. This lets a project pass a resolved project-local font path to typarium, and typarium can read and parse that path inside the package.
+
+```typst
+#font-showcase(
+  fonts: path("Jaldi-Regular.ttf"),
+  theme: (sample-fallback: false),
+)
+```
+
+Normalization result:
+
+- the path is read by typarium, then parsed by the WASM plugin;
+- `render-name` defaults to the extracted family name;
+- `name` defaults to the same extracted family name;
+- callers pass `path(...)` directly; they do not need to use `read(path(...))`.
+
+Visual result:
+
+#font-showcase(
+  fonts: path("Jaldi-Regular.ttf"),
+  theme: (
+    sample-fallback: false,
+    sample-text: "Typst path input triggers package-side reading and parsing.",
   ),
 )
 
@@ -428,7 +467,7 @@ Visual result:
 
 == Dictionary With `path`
 
-A dictionary with `path` triggers file parsing, then applies the rest of the dictionary as explicit overrides.
+A dictionary with `path` triggers file parsing, then applies the rest of the dictionary as explicit overrides. The `path` value may be raw bytes from `read(..., encoding: none)`, or on Typst 0.15.0+, a resolved path from `path(...)`.
 
 ```typst
 #font-showcase(
@@ -448,6 +487,19 @@ Special handling for this case:
 - all non-`path` keys are merged in after parsing;
 - if you need to override the actual rendered family separately from the visible card label, provide both `render-name` and `name` explicitly.
 
+On Typst 0.15.0 or later, this is equivalent:
+
+```typst
+#font-showcase(
+  fonts: (
+    path: path("Jaldi-Regular.ttf"),
+    name: "Jaldi (Custom Card Title)",
+    sample-text: "File metadata plus explicit overrides.",
+    show-glyphs: true,
+  )
+)
+```
+
 Visual result:
 
 #font-showcase(
@@ -461,7 +513,7 @@ Visual result:
 
 == Array of Mixed Items
 
-Arrays may contain strings, dictionaries, or a mixture of both. Each entry becomes one card.
+Arrays may contain strings, raw bytes, Typst 0.15+ path values, dictionaries, or a mixture of these. Each entry becomes one card.
 
 ```typst
 #font-showcase(
@@ -474,7 +526,7 @@ Arrays may contain strings, dictionaries, or a mixture of both. Each entry becom
 )
 ```
 
-The package wraps a single string or dictionary into an array automatically, so you only need explicit parentheses when you truly want multiple items.
+The package wraps a single string, bytes value, Typst 0.15+ path value, or dictionary into an array automatically, so you only need explicit parentheses when you truly want multiple items.
 
 Visual result:
 
@@ -522,7 +574,7 @@ The following keys are always present after normalization, even if they only car
 
 == Optional Metadata Keys From WASM Parsing
 
-When raw font bytes are parsed successfully, additional keys may appear on `it`. In `name`-only mode, these keys should generally be assumed absent unless you supplied them manually:
+When raw font bytes or a Typst 0.15+ path source are parsed successfully, additional keys may appear on `it`. In `name`-only mode, these keys should generally be assumed absent unless you supplied them manually:
 
 - `postscript-name`
 - `font-type`
@@ -1046,8 +1098,8 @@ In addition to the top-level function parameters, per-font dictionaries can carr
 
 Commonly useful per-font keys include:
 
-- `path`: raw font bytes passed from the calling document.
-- `name`: visible label for the card, or the render family for manual entries without `path`. When you use `name` without raw bytes, the card is render-only unless you also provide metadata manually.
+- `path`: raw font bytes passed from the calling document, or a Typst 0.15+ `path(...)` value resolved in the project.
+- `name`: visible label for the card, or the render family for manual entries without `path`. When you use `name` without raw bytes or a Typst 0.15+ path source, the card is render-only unless you also provide metadata manually.
 - `display-name`: card label for manual entries without `path`.
 - `render-name`: explicit render family override.
 - `author`, `description`, `license`, `version`, `copyright`.
@@ -1684,7 +1736,7 @@ This example visualizes `variations.axes` directly. The code block shows the str
 == Inspector Theme
 
 ```typst
-#import "@preview/typarium:0.1.0": font-showcase, inspector-theme, inspector-render
+#import "@preview/typarium:0.1.1": font-showcase, inspector-theme, inspector-render
 
 #font-showcase(
   theme: inspector-theme,
@@ -1761,7 +1813,7 @@ This example visualizes `variations.axes` directly. The code block shows the str
 
 Behavior:
 
-- accepts raw font bytes directly, or reads a package-local path as raw bytes;
+- accepts raw font bytes directly, or reads a string/path source as raw bytes;
 - calls `font-plugin.extract_metadata(raw-bytes)`;
 - parses the returned JSON into a Typst dictionary.
 
@@ -1774,8 +1826,8 @@ Failure behavior:
 
 Responsibilities:
 
-- classifies the input item as string or dictionary;
-- detects local font paths from file extensions or a `path` key;
+- classifies the input item as string, bytes, Typst 0.15+ path, or dictionary;
+- detects local font sources from file extensions, path values, or a dictionary `path` key;
 - computes a fallback family name from the current Typst font context;
 - merges host-level defaults, resolved metadata, and explicit per-item overrides;
 - normalizes metadata keys recursively from underscore to hyphen and aliases `type` to `font-type`;
@@ -1786,7 +1838,7 @@ This helper is where most of the library's real API contract lives, because it d
 = Practical Recommendations
 
 1. Use plain strings for the fastest system-font previews.
-2. Use `path` dictionaries when you want automatic metadata plus selective overrides.
+2. Use `path` dictionaries when you want automatic metadata plus selective overrides; their `path` value can be `read(...)` bytes or Typst 0.15+ `path(...)`.
 3. Use `display-name` when a manual card should show a label different from the actual system font family.
 4. Reach for `theme` when the default layout is fine but the art direction should change.
 5. Reach for `render` when the information architecture should change.
